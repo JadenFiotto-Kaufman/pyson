@@ -1,5 +1,5 @@
 """
-Serialization context and dispatch logic for the seri library.
+Serialization context and dispatch logic for the pyson library.
 
 This module contains the SerializationContext class which manages the
 serialization/deserialization process, including:
@@ -18,7 +18,7 @@ from cloudpickle.cloudpickle import _PICKLE_BY_VALUE_MODULES
 
 from typing import Callable
 
-from seri.types import (
+from pyson.types import (
     ClassRefType,
     DynamicClassType,
     FunctionType,
@@ -297,10 +297,17 @@ class SerializationContext:
         # Add placeholder to detect cycles during serialization
         self.memo[referenceID] = Placeholder
 
-        # Check persistent_table FIRST (takes priority over dispatch_table)
-        if type(obj) in persistent_table:
+        # Check for persistent serialization FIRST (takes priority over dispatch_table)
+        # 1. If object has _persistent_id attribute, use it directly
+        # 2. If type is in persistent_table, call the dump function
+        persistent_id = None
+        if hasattr(obj, "_persistent_id"):
+            persistent_id = obj._persistent_id
+        elif type(obj) in persistent_table:
             dump_fn = persistent_table[type(obj)]
             persistent_id = dump_fn(obj)
+
+        if persistent_id is not None:
             serialized_obj = PersistentType.serialize(obj, self, persistent_id)
             self.memo[referenceID] = serialized_obj
             return referenceID

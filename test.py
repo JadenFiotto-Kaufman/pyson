@@ -1,7 +1,7 @@
-"""Tests for seri serialization/deserialization."""
+"""Tests for pyson serialization/deserialization."""
 
 import pytest
-from seri import serialize, deserialize
+from pyson import serialize, deserialize
 from cloudpickle import register_pickle_by_value
 import json
 import sys
@@ -454,7 +454,7 @@ class TestDynamicClasses:
     def test_class_metadata(self):
         result = roundtrip(ClassWithMethods)
         assert result.__name__ == "ClassWithMethods"
-        assert result.__module__ == "seri.test"
+        assert result.__module__ == "pyson.test"
         assert "A class with various methods" in result.__doc__
 
     def test_instantiate_deserialized_class(self):
@@ -511,7 +511,7 @@ class TestByReference:
         # The class reference is preserved, instances are reconstructed
         obj = SimpleObject(10, "test")
         result = roundtrip(obj)
-        # SimpleObject is by-value since seri.test is registered
+        # SimpleObject is by-value since pyson.test is registered
         assert result.x == 10
         assert result.y == "test"
 
@@ -637,7 +637,7 @@ class TestCustomSerializers:
     """Test custom serializers for pandas and numpy."""
 
     def test_numpy_array_1d(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
 
         arr = np.array([1, 2, 3, 4, 5])
@@ -647,7 +647,7 @@ class TestCustomSerializers:
         assert result.dtype == arr.dtype
 
     def test_numpy_array_2d(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
 
         arr = np.array([[1, 2, 3], [4, 5, 6]])
@@ -657,7 +657,7 @@ class TestCustomSerializers:
         assert result.shape == (2, 3)
 
     def test_numpy_array_float(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
 
         arr = np.array([1.5, 2.5, 3.5], dtype=np.float64)
@@ -666,7 +666,7 @@ class TestCustomSerializers:
         assert result.dtype == np.float64
 
     def test_numpy_array_empty(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
 
         arr = np.array([])
@@ -675,7 +675,7 @@ class TestCustomSerializers:
         assert len(result) == 0
 
     def test_numpy_array_multidimensional(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
 
         arr = np.zeros((2, 3, 4))
@@ -684,7 +684,7 @@ class TestCustomSerializers:
         assert np.array_equal(result, arr)
 
     def test_pandas_series(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import pandas as pd
 
         s = pd.Series([1, 2, 3], index=["a", "b", "c"], name="my_series")
@@ -695,7 +695,7 @@ class TestCustomSerializers:
         assert list(result.values) == [1, 2, 3]
 
     def test_pandas_series_float(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import pandas as pd
 
         s = pd.Series([1.1, 2.2, 3.3])
@@ -704,7 +704,7 @@ class TestCustomSerializers:
         assert s.equals(result)
 
     def test_pandas_dataframe(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import pandas as pd
 
         df = pd.DataFrame({"a": [1, 2, 3], "b": ["x", "y", "z"], "c": [1.5, 2.5, 3.5]})
@@ -714,7 +714,7 @@ class TestCustomSerializers:
         assert df.equals(result)
 
     def test_pandas_dataframe_with_index(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import pandas as pd
 
         df = pd.DataFrame({"col1": [10, 20], "col2": [30, 40]}, index=["row1", "row2"])
@@ -723,7 +723,7 @@ class TestCustomSerializers:
         assert df.equals(result)
 
     def test_pandas_dataframe_dtypes_preserved(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import pandas as pd
 
         df = pd.DataFrame({"ints": [1, 2], "floats": [1.0, 2.0], "strs": ["a", "b"]})
@@ -733,7 +733,7 @@ class TestCustomSerializers:
         assert result["strs"].dtype == df["strs"].dtype
 
     def test_mixed_numpy_pandas(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import numpy as np
         import pandas as pd
 
@@ -749,7 +749,7 @@ class TestCustomSerializers:
         assert result["dataframe"].equals(df)
 
     def test_torch_tensor_1d(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([1.0, 2.0, 3.0])
@@ -758,7 +758,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_tensor_2d(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([[1, 2, 3], [4, 5, 6]])
@@ -767,7 +767,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_tensor_float64(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([1.5, 2.5, 3.5], dtype=torch.float64)
@@ -776,7 +776,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_tensor_int32(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([1, 2, 3], dtype=torch.int32)
@@ -785,7 +785,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_tensor_bfloat16(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([1.0, 2.0, 3.0], dtype=torch.bfloat16)
@@ -794,7 +794,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_tensor_multidimensional(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.zeros((2, 3, 4, 5))
@@ -803,7 +803,7 @@ class TestCustomSerializers:
         assert torch.equal(result, t)
 
     def test_torch_sparse_tensor(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         # Create a sparse COO tensor
@@ -817,7 +817,7 @@ class TestCustomSerializers:
         assert torch.equal(result.to_dense(), t.to_dense())
 
     def test_torch_quantized_tensor(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         # Create a quantized tensor
@@ -832,7 +832,7 @@ class TestCustomSerializers:
         assert torch.allclose(result.dequantize(), qt.dequantize())
 
     def test_torch_tensor_shared_reference(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
 
         t = torch.tensor([1, 2, 3])
@@ -842,7 +842,7 @@ class TestCustomSerializers:
         assert result[0] is result[1]
 
     def test_mixed_torch_numpy_pandas(self):
-        import seri.custom  # noqa: F401
+        import pyson.custom  # noqa: F401
         import torch
         import numpy as np
         import pandas as pd
@@ -863,8 +863,8 @@ class TestPersistentSerialization:
     """Test persistent serialization with custom dump functions."""
 
     def test_persistent_simple(self):
-        from seri import serialize, deserialize, register_persistent
-        from seri.serialize import persistent_table
+        from pyson import serialize, deserialize, register_persistent
+        from pyson.serialize import persistent_table
 
         # Create a simple class with persistent serialization
         class CachedObject:
@@ -897,8 +897,8 @@ class TestPersistentSerialization:
         del persistent_table[CachedObject]
 
     def test_persistent_in_container(self):
-        from seri import serialize, deserialize, register_persistent
-        from seri.serialize import persistent_table
+        from pyson import serialize, deserialize, register_persistent
+        from pyson.serialize import persistent_table
 
         class ExternalResource:
             def __init__(self, resource_id, data):
@@ -928,8 +928,8 @@ class TestPersistentSerialization:
         del persistent_table[ExternalResource]
 
     def test_persistent_shared_reference(self):
-        from seri import serialize, deserialize, register_persistent
-        from seri.serialize import persistent_table
+        from pyson import serialize, deserialize, register_persistent
+        from pyson.serialize import persistent_table
 
         class SingletonLike:
             def __init__(self, name):
@@ -959,8 +959,8 @@ class TestPersistentSerialization:
         del persistent_table[SingletonLike]
 
     def test_persistent_takes_priority_over_dispatch(self):
-        from seri import serialize, deserialize, register_persistent
-        from seri.serialize import persistent_table
+        from pyson import serialize, deserialize, register_persistent
+        from pyson.serialize import persistent_table
 
         class SpecialList(list):
             pass
@@ -993,6 +993,87 @@ class TestPersistentSerialization:
 
         # Cleanup
         del persistent_table[SpecialList]
+
+    def test_persistent_id_attribute(self):
+        """Test that objects with _persistent_id attribute are serialized persistently."""
+        from pyson import serialize, deserialize
+
+        class ResourceWithId:
+            def __init__(self, resource_id, data):
+                self._persistent_id = resource_id  # Magic attribute
+                self.data = data
+
+        storage = {}
+        obj = ResourceWithId("resource-abc", {"value": 42})
+        storage[obj._persistent_id] = obj
+
+        payload = serialize(obj)
+        json_str = payload.model_dump_json()
+
+        # Check it was serialized as persistent
+        json_data = json.loads(json_str)
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        root_entry = memo[root_ref]
+        assert root_entry["type"] == "persistent"
+        assert root_entry["persistent_id"] == "resource-abc"
+
+        # Deserialize
+        result = deserialize(json_data, persistent_objects=storage)
+        assert result is obj
+        assert result.data == {"value": 42}
+
+    def test_persistent_id_attribute_in_container(self):
+        """Test _persistent_id objects inside containers."""
+        from pyson import serialize, deserialize
+
+        class Entity:
+            def __init__(self, entity_id):
+                self._persistent_id = entity_id
+                self.entity_id = entity_id
+
+        storage = {}
+        e1 = Entity("entity-1")
+        e2 = Entity("entity-2")
+        storage[e1._persistent_id] = e1
+        storage[e2._persistent_id] = e2
+
+        container = {"entities": [e1, e2], "primary": e1}
+        payload = serialize(container)
+        json_str = payload.model_dump_json()
+
+        result = deserialize(json.loads(json_str), persistent_objects=storage)
+
+        assert result["entities"][0] is e1
+        assert result["entities"][1] is e2
+        assert result["primary"] is e1  # Shared reference preserved
+
+    def test_persistent_id_attribute_priority(self):
+        """Test that _persistent_id takes priority over persistent_table."""
+        from pyson import serialize, deserialize, register_persistent
+        from pyson.serialize import persistent_table
+
+        class PriorityTest:
+            def __init__(self, pid):
+                self._persistent_id = pid
+
+        # Register a dump function that would return a different ID
+        register_persistent(PriorityTest, lambda obj: "from-table")
+
+        storage = {}
+        obj = PriorityTest("from-attribute")
+        storage["from-attribute"] = obj
+
+        payload = serialize(obj)
+        json_data = json.loads(payload.model_dump_json())
+
+        # Should use _persistent_id, not the dump function
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        assert memo[root_ref]["persistent_id"] == "from-attribute"
+
+        # Cleanup
+        del persistent_table[PriorityTest]
 
 
 if __name__ == "__main__":

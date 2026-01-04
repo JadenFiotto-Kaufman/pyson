@@ -5,8 +5,8 @@ This module provides serializers for popular libraries like pandas.
 Import this module to register these serializers.
 
 Usage:
-    import seri.custom  # Registers pandas DataFrame serializer
-    from seri import serialize, deserialize
+    import pyson.custom  # Registers pandas DataFrame serializer
+    from pyson import serialize, deserialize
 
     df = pd.DataFrame({"a": [1, 2], "b": [3, 4]})
     payload = serialize(df)
@@ -18,10 +18,10 @@ from __future__ import annotations
 from typing import Literal, Any, TYPE_CHECKING
 import base64
 
-from seri.types import SerializedType, ReferenceId
+from pyson.types import SerializedType, ReferenceId
 
 if TYPE_CHECKING:
-    from seri.serialize import SerializationContext
+    from pyson.serialize import SerializationContext
 else:
     SerializationContext = Any
 
@@ -337,7 +337,7 @@ class TensorType(SerializedType):
 
 
 # Register the serializers
-from seri.serialize import register_serializer
+from pyson.serialize import register_serializer
 
 register_serializer(pd.Series, SeriesType)
 register_serializer(pd.DataFrame, DataFrameType)

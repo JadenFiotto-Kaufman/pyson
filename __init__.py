@@ -1,5 +1,5 @@
 """
-seri - JSON-serializable Python object serialization.
+pyson - JSON-serializable Python object serialization.
 
 This library serializes Python objects to JSON-compatible Pydantic models,
 preserving object identity, circular references, and complex types including:
@@ -15,7 +15,7 @@ Unlike pickle, the serialized output is human-readable JSON and can be
 inspected, modified, or transmitted over JSON-based protocols.
 
 Usage:
-    >>> from seri import serialize, deserialize
+    >>> from pyson import serialize, deserialize
     >>> import json
     >>>
     >>> # Serialize any Python object
@@ -32,7 +32,7 @@ For functions and classes from your own modules to be serialized by value
     >>> register_pickle_by_value(mymodule)
 
 To add custom serializers for new types:
-    >>> from seri import register_serializer, SerializedType
+    >>> from pyson import register_serializer, SerializedType
     >>> from typing import Literal
     >>>
     >>> class MySerializer(SerializedType):
@@ -42,12 +42,12 @@ To add custom serializers for new types:
     >>> register_serializer(MyClass, MySerializer)
 """
 
-from seri.serialize import (
+from pyson.serialize import (
     SerializationContext,
     register_serializer,
     register_persistent,
 )
-from seri.types import Memo, ReferenceId, SerializedType
+from pyson.types import Memo, ReferenceId, SerializedType
 from pydantic import BaseModel
 from cloudpickle import register_pickle_by_value as register_by_value
 
