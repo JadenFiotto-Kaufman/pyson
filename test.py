@@ -1076,5 +1076,123 @@ class TestPersistentSerialization:
         del persistent_table[PriorityTest]
 
 
+class TestModuleSerialization:
+    """Test module serialization (by reference and by value)."""
+
+    def test_module_ref(self):
+        """Test that installed modules are serialized by reference."""
+        import json as json_mod
+
+        payload = serialize(json_mod)
+        json_str = payload.model_dump_json()
+        json_data = json.loads(json_str)
+
+        # Check it's a module_ref
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        assert memo[root_ref]["type"] == "module_ref"
+        assert memo[root_ref]["name"] == "json"
+
+        # Deserialize and verify
+        result = roundtrip(json_mod)
+        assert result is json_mod
+
+    def test_module_in_function_globals(self):
+        """Test that modules in function globals are serialized correctly."""
+        import math
+
+        def uses_math(x):
+            return math.sqrt(x)
+
+        result = roundtrip(uses_math)
+        assert result(16) == 4.0
+
+    def test_module_ref_pandas(self):
+        """Test pandas module serialization by reference."""
+        import pandas as pd
+
+        payload = serialize(pd)
+        json_str = payload.model_dump_json()
+        json_data = json.loads(json_str)
+
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        assert memo[root_ref]["type"] == "module_ref"
+        assert memo[root_ref]["name"] == "pandas"
+
+        result = roundtrip(pd)
+        assert result is pd
+
+
+class TestFunctionRefSerialization:
+    """Test function by-reference serialization."""
+
+    def test_stdlib_function_ref(self):
+        """Test that stdlib functions are serialized by reference."""
+        from os.path import join
+
+        payload = serialize(join)
+        json_str = payload.model_dump_json()
+        json_data = json.loads(json_str)
+
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        assert memo[root_ref]["type"] == "function_ref"
+        assert (
+            memo[root_ref]["module"] == "posixpath"
+            or memo[root_ref]["module"] == "ntpath"
+        )
+        assert memo[root_ref]["name"] == "join"
+
+        result = roundtrip(join)
+        assert result("a", "b") == join("a", "b")
+
+    def test_installed_package_function_ref(self):
+        """Test that functions from installed packages are by reference."""
+        from json import dumps
+
+        payload = serialize(dumps)
+        json_str = payload.model_dump_json()
+        json_data = json.loads(json_str)
+
+        memo = json_data["memo"]
+        root_ref = str(json_data["obj"])
+        assert memo[root_ref]["type"] == "function_ref"
+        assert memo[root_ref]["name"] == "dumps"
+
+        result = roundtrip(dumps)
+        assert result({"a": 1}) == '{"a": 1}'
+
+    def test_function_by_value_vs_ref(self):
+        """Test that local functions are by-value while stdlib are by-ref."""
+        from math import sqrt
+
+        def local_func(x):
+            return x * 2
+
+        # Local function should be by value
+        payload_local = serialize(local_func)
+        json_local = json.loads(payload_local.model_dump_json())
+        memo_local = json_local["memo"]
+        root_local = str(json_local["obj"])
+        assert memo_local[root_local]["type"] == "function"
+
+        # Stdlib function should be by reference
+        payload_stdlib = serialize(sqrt)
+        json_stdlib = json.loads(payload_stdlib.model_dump_json())
+        memo_stdlib = json_stdlib["memo"]
+        root_stdlib = str(json_stdlib["obj"])
+        assert memo_stdlib[root_stdlib]["type"] == "function_ref"
+
+    def test_function_ref_with_qualname(self):
+        """Test function reference with qualified name (class method)."""
+        # json.JSONEncoder.encode is a method on a class
+        from json import JSONEncoder
+
+        result = roundtrip(JSONEncoder.encode)
+        encoder = JSONEncoder()
+        assert result(encoder, {"a": 1}) == '{"a": 1}'
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

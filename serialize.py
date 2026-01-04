@@ -21,8 +21,11 @@ from typing import Callable
 from pyson.types import (
     ClassRefType,
     DynamicClassType,
+    DynamicModuleType,
+    FunctionRefType,
     FunctionType,
     Memo,
+    ModuleRefType,
     ObjectType,
     PersistentType,
     Placeholder,
@@ -223,6 +226,19 @@ def _should_serialize_class_by_value(cls: type) -> bool:
     return _should_serialize_by_value(getattr(cls, "__module__", None))
 
 
+def _should_serialize_module_by_value(mod: types.ModuleType) -> bool:
+    """
+    Check if a module should be serialized by value.
+
+    Args:
+        mod: The module to check.
+
+    Returns:
+        True if the module should be serialized with its contents.
+    """
+    return _should_serialize_by_value(mod.__name__)
+
+
 # =============================================================================
 # Serialization Context
 # =============================================================================
@@ -316,22 +332,33 @@ class SerializationContext:
         if type(obj) in dispatch_table:
             # Direct type match in dispatch table
             serialized_type = dispatch_table[type(obj)]
-        elif isinstance(
-            obj, types.FunctionType
-        ) and _should_serialize_function_by_value(obj):
-            # Functions from __main__ or registered modules -> serialize with source
-            serialized_type = FunctionType
-        elif isinstance(
-            obj, (classmethod, staticmethod)
-        ) and _should_serialize_function_by_value(obj.__func__):
-            # classmethod/staticmethod wrapping by-value functions
-            serialized_type = FunctionType
+        elif isinstance(obj, types.FunctionType):
+            # Functions - by value or by reference depending on module
+            if _should_serialize_function_by_value(obj):
+                serialized_type = FunctionType
+            else:
+                serialized_type = FunctionRefType
+        elif isinstance(obj, types.BuiltinFunctionType):
+            # Built-in (C) functions are always by reference
+            serialized_type = FunctionRefType
+        elif isinstance(obj, (classmethod, staticmethod)):
+            # classmethod/staticmethod - by value or by reference
+            if _should_serialize_function_by_value(obj.__func__):
+                serialized_type = FunctionType
+            else:
+                serialized_type = FunctionRefType
         elif isinstance(obj, type):
             # Class objects - by value or by reference depending on module
             if _should_serialize_class_by_value(obj):
                 serialized_type = DynamicClassType
             else:
                 serialized_type = ClassRefType
+        elif isinstance(obj, types.ModuleType):
+            # Module objects - by value or by reference depending on registration
+            if _should_serialize_module_by_value(obj):
+                serialized_type = DynamicModuleType
+            else:
+                serialized_type = ModuleRefType
         else:
             # Default: serialize as a generic object with __dict__
             serialized_type = ObjectType

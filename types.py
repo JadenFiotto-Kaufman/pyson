@@ -32,7 +32,7 @@ import textwrap
 import types
 
 if TYPE_CHECKING:
-    from seri.serialize import SerializationContext
+    from pyson.serialize import SerializationContext
 else:
     SerializationContext = Any
 
@@ -195,6 +195,83 @@ class DictType(SerializedType):
             obj[context.deserialize(key)] = context.deserialize(value)
 
         return obj
+
+
+# =============================================================================
+# Module Type
+# =============================================================================
+
+
+class ModuleRefType(SerializedType):
+    """
+    Serializer for module objects by reference.
+
+    Stores only the module name, which is used to re-import the module
+    during deserialization. Used for stdlib and installed packages.
+    """
+
+    type: Literal["module_ref"] = "module_ref"
+    name: str
+
+    @classmethod
+    def serialize(cls, obj, context: SerializationContext):
+        return cls(name=obj.__name__)
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        mod = importlib.import_module(self.name)
+        context.memo[referenceID] = mod
+        return mod
+
+
+class DynamicModuleType(SerializedType):
+    """
+    Serializer for module objects by value.
+
+    Used for modules from __main__ or registered via register_pickle_by_value.
+    Stores the module's attributes so they can be reconstructed.
+    """
+
+    type: Literal["dynamic_module"] = "dynamic_module"
+    name: str
+    doc: str | None
+    attrs: dict[str, ReferenceId]
+
+    @classmethod
+    def serialize(cls, obj, context: SerializationContext):
+        # Get module attributes (skip private/dunder and unserializable)
+        attrs = {}
+        for key in dir(obj):
+            if key.startswith("_"):
+                continue
+            try:
+                value = getattr(obj, key)
+                # Skip built-in functions (not serializable)
+                if isinstance(value, types.BuiltinFunctionType):
+                    continue
+                attrs[key] = context.serialize(value)
+            except Exception:
+                # Skip unserializable attributes
+                pass
+
+        return cls(
+            name=obj.__name__,
+            doc=obj.__doc__,
+            attrs=attrs,
+        )
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        # Create a new module
+        mod = types.ModuleType(self.name, self.doc)
+
+        # Memoize before populating (for circular refs)
+        context.memo[referenceID] = mod
+
+        # Deserialize and set attributes
+        for key, ref in self.attrs.items():
+            value = context.deserialize(ref)
+            setattr(mod, key, value)
+
+        return mod
 
 
 # =============================================================================
@@ -413,6 +490,48 @@ class ObjectType(SerializedType):
 # =============================================================================
 # Function Types
 # =============================================================================
+
+
+class FunctionRefType(SerializedType):
+    """
+    Serializer for functions by reference.
+
+    Used for functions from installed packages that can be imported.
+    Stores only the module path and function name.
+    """
+
+    type: Literal["function_ref"] = "function_ref"
+    name: str
+    module: str
+    qualname: str
+
+    @classmethod
+    def serialize(cls, obj, context: SerializationContext):
+        # Handle classmethod/staticmethod wrappers
+        if isinstance(obj, classmethod):
+            func = obj.__func__
+        elif isinstance(obj, staticmethod):
+            func = obj.__func__
+        else:
+            func = obj
+
+        return cls(
+            name=func.__name__,
+            module=func.__module__,
+            qualname=func.__qualname__,
+        )
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        # Import the module and traverse to get the function
+        mod = importlib.import_module(self.module)
+
+        # Handle qualified names like "ClassName.method_name"
+        obj = mod
+        for attr in self.qualname.split("."):
+            obj = getattr(obj, attr)
+
+        context.memo[referenceID] = obj
+        return obj
 
 
 class FunctionType(SerializedType):
@@ -734,10 +853,19 @@ class PersistentType(SerializedType):
 _TYPE_REGISTRY: dict[str, type[SerializedType]] = {}
 
 
-# Note: ObjectType, FunctionType, ClassRefType, DynamicClassType, PersistentType
+# Note: ObjectType, FunctionType, ClassRefType, DynamicClassType, PersistentType, ModuleRefType
 # are not in dispatch_table - they're selected by logic in SerializationContext.serialize()
 # But we still register them in _TYPE_REGISTRY for deserialization:
-for _cls in [ObjectType, FunctionType, ClassRefType, DynamicClassType, PersistentType]:
+for _cls in [
+    ObjectType,
+    FunctionType,
+    FunctionRefType,
+    ClassRefType,
+    DynamicClassType,
+    PersistentType,
+    ModuleRefType,
+    DynamicModuleType,
+]:
     type_field = _cls.model_fields.get("type")
     if type_field and type_field.default:
         _TYPE_REGISTRY[type_field.default] = _cls
