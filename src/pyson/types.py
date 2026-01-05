@@ -7,7 +7,7 @@ Each SerializedType subclass handles a specific Python type:
 - PrimitiveType: int, float, bool, str, None
 - ListType, TupleType, DictType: Built-in collections
 - ObjectType: Generic objects with __dict__
-- FunctionType: Functions, classmethods, staticmethods (by value)
+- DynamicFunctionType: Functions, classmethods, staticmethods (by value)
 - ClassRefType: Classes serialized by reference (import path)
 - DynamicClassType: Classes serialized by value (full definition)
 - MethodType: Bound instance methods
@@ -246,7 +246,7 @@ class DynamicModuleType(SerializedType):
             try:
                 value = getattr(obj, key)
                 # Skip built-in functions (not serializable)
-                if isinstance(value, types.BuiltinFunctionType):
+                if isinstance(value, types.BuiltinDynamicFunctionType):
                     continue
                 attrs[key] = context.serialize(value)
             except Exception:
@@ -534,7 +534,7 @@ class FunctionRefType(SerializedType):
         return obj
 
 
-class FunctionType(SerializedType):
+class DynamicFunctionType(SerializedType):
     """
     Serializer for functions, classmethods, and staticmethods.
 
@@ -853,12 +853,12 @@ class PersistentType(SerializedType):
 _TYPE_REGISTRY: dict[str, type[SerializedType]] = {}
 
 
-# Note: ObjectType, FunctionType, ClassRefType, DynamicClassType, PersistentType, ModuleRefType
+# Note: ObjectType, DynamicFunctionType, ClassRefType, DynamicClassType, PersistentType, ModuleRefType
 # are not in dispatch_table - they're selected by logic in SerializationContext.serialize()
 # But we still register them in _TYPE_REGISTRY for deserialization:
 for _cls in [
     ObjectType,
-    FunctionType,
+    DynamicFunctionType,
     FunctionRefType,
     ClassRefType,
     DynamicClassType,
@@ -933,3 +933,4 @@ SerializedValue = Annotated[
 
 # Type alias for the memo table
 Memo = dict[int, SerializedValue]
+

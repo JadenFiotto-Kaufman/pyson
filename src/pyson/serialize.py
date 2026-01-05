@@ -23,7 +23,7 @@ from pyson.types import (
     DynamicClassType,
     DynamicModuleType,
     FunctionRefType,
-    FunctionType,
+    DynamicFunctionType,
     Memo,
     ModuleRefType,
     ObjectType,
@@ -196,7 +196,7 @@ def _should_serialize_by_value(module: str | None) -> bool:
     return False
 
 
-def _should_serialize_function_by_value(func: types.FunctionType) -> bool:
+def _should_serialize_function_by_value(func: types.DynamicFunctionType) -> bool:
     """
     Check if a function should be serialized by value (with source code).
 
@@ -335,7 +335,7 @@ class SerializationContext:
         elif isinstance(obj, types.FunctionType):
             # Functions - by value or by reference depending on module
             if _should_serialize_function_by_value(obj):
-                serialized_type = FunctionType
+                serialized_type = DynamicFunctionType
             else:
                 serialized_type = FunctionRefType
         elif isinstance(obj, types.BuiltinFunctionType):
@@ -344,7 +344,7 @@ class SerializationContext:
         elif isinstance(obj, (classmethod, staticmethod)):
             # classmethod/staticmethod - by value or by reference
             if _should_serialize_function_by_value(obj.__func__):
-                serialized_type = FunctionType
+                serialized_type = DynamicFunctionType
             else:
                 serialized_type = FunctionRefType
         elif isinstance(obj, type):
@@ -391,3 +391,4 @@ class SerializationContext:
 
         # Deserialize and the type's deserialize() will update memo
         return obj.deserialize(referenceID, self)
+

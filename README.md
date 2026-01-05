@@ -7,9 +7,18 @@ Unlike pickle, pyson produces human-readable JSON that can be inspected, modifie
 ## Installation
 
 ```bash
-pip install pydantic cloudpickle
+# Install from local directory
+pip install .
+
+# Or for development (editable install)
+pip install -e .
+
 # Optional: for numpy/pandas/torch support
-pip install numpy pandas torch
+pip install ".[all]"
+# Or individually:
+pip install ".[numpy]"
+pip install ".[pandas]"
+pip install ".[torch]"
 ```
 
 ## Quick Start

@@ -343,3 +343,4 @@ register_serializer(pd.Series, SeriesType)
 register_serializer(pd.DataFrame, DataFrameType)
 register_serializer(np.ndarray, NdarrayType)
 register_serializer(torch.Tensor, TensorType)
+

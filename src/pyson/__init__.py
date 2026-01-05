@@ -126,3 +126,4 @@ def deserialize(payload: dict, persistent_objects: dict[str, object] | None = No
     validated = Payload.model_validate(payload)
     context = SerializationContext(validated.memo, persistent_objects)
     return context.deserialize(validated.obj)
+

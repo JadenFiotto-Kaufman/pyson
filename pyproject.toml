@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pyson"
+version = "0.1.0"
+description = "JSON-serializable Python object serialization"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+]
+keywords = ["serialization", "json", "pickle", "pydantic"]
+dependencies = [
+    "pydantic>=2.0",
+    "cloudpickle>=2.0",
+]
+
+[project.optional-dependencies]
+numpy = ["numpy"]
+pandas = ["pandas", "numpy"]
+torch = ["torch", "numpy"]
+all = ["numpy", "pandas", "torch"]
+dev = ["pytest", "numpy", "pandas", "torch"]
+
+[project.urls]
+Homepage = "https://github.com/yourusername/pyson"
+Repository = "https://github.com/yourusername/pyson"
+
