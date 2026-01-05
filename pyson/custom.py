@@ -18,7 +18,7 @@ from __future__ import annotations
 from typing import Literal, Any, TYPE_CHECKING
 import base64
 
-from pyson.types import SerializedType, ReferenceId
+from pyson.stypes import SerializedType, ReferenceId
 
 if TYPE_CHECKING:
     from pyson.serialize import SerializationContext

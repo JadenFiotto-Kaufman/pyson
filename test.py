@@ -454,7 +454,8 @@ class TestDynamicClasses:
     def test_class_metadata(self):
         result = roundtrip(ClassWithMethods)
         assert result.__name__ == "ClassWithMethods"
-        assert result.__module__ == "pyson.test"
+        # Module name depends on how the test is run
+        assert result.__module__ in ("test", "pyson.test", "__main__")
         assert "A class with various methods" in result.__doc__
 
     def test_instantiate_deserialized_class(self):
