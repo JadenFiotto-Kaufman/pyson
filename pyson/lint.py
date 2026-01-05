@@ -1,17 +1,25 @@
 """
-AST-based validation for serializable code.
+Static source code linting for pyson serialization.
 
-This module provides linting capabilities to detect code patterns that cannot
-be safely serialized for remote execution. It checks for:
+This module provides configurable static analysis to enforce host-chosen
+standards on serialized code. It performs AST-based validation to detect
+patterns that the host application wants to reject, providing clear and
+actionable error messages to users.
 
-1. Forbidden module imports (OS, network, database, etc.)
-2. Forbidden function calls (exec, eval, open, etc.)
-3. Forbidden attribute chains (os.system, subprocess.run, etc.)
-4. Forbidden types with helpful error messages (pandas, matplotlib, etc.)
-5. Nonlocal closure variables (cannot preserve shared cell semantics)
+Purpose:
+    This is a CLIENT-SIDE linting tool for user experience, NOT a security
+    boundary. It helps users fix their code before submission by catching
+    common issues early with helpful suggestions.
 
-These checks run early to provide clear, actionable error messages instead
-of confusing runtime failures.
+    For server-side security enforcement, see pyson.restricted which provides
+    RestrictedPython integration for runtime sandboxing.
+
+Checks performed:
+    1. Forbidden module imports (configurable list)
+    2. Forbidden function calls (e.g., eval, exec, open)
+    3. Forbidden attribute chains (e.g., os.system, subprocess.run)
+    4. Forbidden types with helpful error messages
+    5. Nonlocal closure variables (cannot preserve shared cell semantics)
 
 Configuration:
     The LintConfig class allows customizing which patterns are forbidden.
