@@ -14,7 +14,7 @@ preserving object identity, circular references, and complex types including:
 Unlike pickle, the serialized output is human-readable JSON and can be
 inspected, modified, or transmitted over JSON-based protocols.
 
-Usage:
+Basic Usage:
     >>> from pyson import serialize, deserialize
     >>> import json
     >>>
@@ -24,6 +24,29 @@ Usage:
     >>>
     >>> # Deserialize back to Python
     >>> result = deserialize(json.loads(json_str))
+
+Linting (for remote execution safety):
+    >>> from pyson.lint import NNSIGHT_CONFIG  # or create custom LintConfig
+    >>> # Enable validation for remote execution
+    >>> payload = serialize(data, lint=NNSIGHT_CONFIG)
+    >>> # Will raise ValueError on:
+    >>> #   - Forbidden types (pandas DataFrames, file handles, etc.)
+    >>> #   - Functions with nonlocal closures
+    >>> #   - Code with forbidden imports/calls
+
+Server-Provided Attributes (for remote execution):
+    >>> # Mark attributes that should be provided by the server
+    >>> class MyModel:
+    ...     _server_provided = frozenset({'_cache', '_connection'})
+    >>>
+    >>> # These attributes are skipped during serialization
+    >>> payload = serialize(model)
+    >>>
+    >>> # Inject server's values during deserialization
+    >>> result = deserialize(payload_dict, server_provided={
+    ...     '_cache': server_cache,
+    ...     '_connection': server_conn
+    ... })
 
 For functions and classes from your own modules to be serialized by value
 (with source code), register them with cloudpickle:
@@ -47,9 +70,12 @@ from pyson.serialize import (
     register_serializer,
     register_persistent,
 )
-from pyson.types import Memo, ReferenceId, SerializedType
+from pyson.stypes import Memo, ReferenceId, SerializedType
 from pydantic import BaseModel
 from cloudpickle import register_pickle_by_value as register_by_value
+
+# Import lint module for strict mode validation
+from pyson import lint
 
 
 class Payload(BaseModel):
@@ -72,7 +98,7 @@ class Payload(BaseModel):
     obj: ReferenceId
 
 
-def serialize(obj) -> Payload:
+def serialize(obj, *, lint: 'lint.LintConfig | None' = None) -> Payload:
     """
     Serialize a Python object to a Payload.
 
@@ -81,20 +107,49 @@ def serialize(obj) -> Payload:
 
     Args:
         obj: Any Python object to serialize.
+        lint: Optional LintConfig for validation. When provided, enables
+            checking for forbidden types, nonlocal closures, and dangerous
+            imports/calls. Use lint.NNSIGHT_CONFIG for nnsight-compatible
+            validation, or create a custom LintConfig for other use cases.
 
     Returns:
         A Payload containing the serialized representation.
+
+    Raises:
+        ValueError: If linting is enabled and the object or its contents
+            violate the configured serialization safety rules.
 
     Example:
         >>> payload = serialize([1, 2, {"nested": True}])
         >>> json_str = payload.model_dump_json()
         >>> print(json_str)  # Human-readable JSON
+
+    Example with linting (nnsight config):
+        >>> from pyson.lint import NNSIGHT_CONFIG
+        >>> # Raises helpful error instead of serializing DataFrame
+        >>> payload = serialize(pandas_df, lint=NNSIGHT_CONFIG)
+        ValueError: Cannot serialize DataFrame:
+        pandas.DataFrame cannot be serialized.
+        Convert to a tensor before serialization:
+          tensor_data = torch.tensor(df.values)
+
+    Example with custom lint config:
+        >>> from pyson.lint import LintConfig
+        >>> config = LintConfig(
+        ...     forbidden_modules=frozenset({'os', 'subprocess'}),
+        ...     reject_nonlocal=True,
+        ... )
+        >>> payload = serialize(my_func, lint=config)
     """
-    context = SerializationContext()
+    context = SerializationContext(lint=lint)
     return Payload(memo=context.memo, obj=context.serialize(obj))
 
 
-def deserialize(payload: dict, persistent_objects: dict[str, object] | None = None):
+def deserialize(
+    payload: dict,
+    persistent_objects: dict[str, object] | None = None,
+    server_provided: dict[str, object] | None = None,
+):
     """
     Deserialize a payload dictionary back to a Python object.
 
@@ -106,6 +161,10 @@ def deserialize(payload: dict, persistent_objects: dict[str, object] | None = No
         persistent_objects: Optional dict mapping persistent IDs to objects.
             Required when deserializing payloads that contain PersistentType
             references (objects serialized via register_persistent).
+        server_provided: Optional dict mapping attribute names to values.
+            Used to inject values for attributes marked as _server_provided
+            on classes. These attributes are skipped during serialization
+            and must be provided during deserialization.
 
     Returns:
         The reconstructed Python object.
@@ -122,7 +181,47 @@ def deserialize(payload: dict, persistent_objects: dict[str, object] | None = No
         >>> model = LargeModel("/models/gpt.pt")
         >>> payload = serialize(model)
         >>> result = deserialize(payload, persistent_objects={"/models/gpt.pt": model})
+
+    Example with server-provided attributes:
+        >>> # Class that marks certain attributes as server-provided
+        >>> class Model:
+        ...     _server_provided = frozenset({'_tokenizer', '_module'})
+        >>>
+        >>> # These are skipped during serialization
+        >>> payload = serialize(model)
+        >>>
+        >>> # Inject server's values during deserialization
+        >>> result = deserialize(
+        ...     payload_dict,
+        ...     server_provided={
+        ...         '_tokenizer': server_tokenizer,
+        ...         '_module': server_module,
+        ...     }
+        ... )
     """
     validated = Payload.model_validate(payload)
-    context = SerializationContext(validated.memo, persistent_objects)
+    context = SerializationContext(
+        memo=validated.memo,
+        persistent_objects=persistent_objects,
+        server_provided=server_provided,
+    )
     return context.deserialize(validated.obj)
+
+
+__all__ = [
+    # Core API
+    "serialize",
+    "deserialize",
+    "Payload",
+    # Registration
+    "register_serializer",
+    "register_persistent",
+    "register_by_value",
+    # Types
+    "SerializationContext",
+    "SerializedType",
+    "Memo",
+    "ReferenceId",
+    # Validation
+    "lint",
+]

@@ -6,8 +6,21 @@ serialization/deserialization process, including:
 - Memoization for handling circular references and shared objects
 - Type dispatch to select the appropriate serializer
 - By-value vs by-reference decisions for functions and classes
+- Optional strict mode with linting for remote execution safety
 
 The dispatch table maps Python types to their serializer classes.
+
+Strict Mode:
+    When `strict=True` is passed to SerializationContext, additional
+    validation is performed:
+    - Forbidden types are rejected with helpful error messages
+    - Functions with `nonlocal` closures are rejected
+    - Source code is validated for forbidden imports/calls
+
+Server-Provided Attributes:
+    When deserializing, pass `server_provided` dict to inject attributes
+    that were marked as `_server_provided` on classes and skipped during
+    serialization.
 """
 
 from __future__ import annotations
@@ -18,7 +31,7 @@ from cloudpickle.cloudpickle import _PICKLE_BY_VALUE_MODULES
 
 from typing import Callable
 
-from pyson.types import (
+from pyson.stypes import (
     ClassRefType,
     DynamicClassType,
     DynamicModuleType,
@@ -257,17 +270,40 @@ class SerializationContext:
         memo: Dictionary mapping reference IDs to serialized objects.
         persistent_objects: Dictionary mapping persistent IDs to objects
             (used during deserialization for PersistentType).
+        lint: Optional LintConfig for validation. If provided, enables
+            checking for forbidden types, nonlocal closures, etc.
+        server_provided: Dictionary of attribute values to inject during
+            deserialization for objects with _server_provided class attribute.
 
     Example:
         >>> context = SerializationContext()
         >>> ref_id = context.serialize([1, 2, 3])
         >>> result = context.deserialize(ref_id)
+
+    Lint Config Example:
+        >>> from pyson.lint import NNSIGHT_CONFIG
+        >>> context = SerializationContext(lint=NNSIGHT_CONFIG)
+        >>> # Will raise error on forbidden types like pandas DataFrames
+        >>> ref_id = context.serialize(pandas_df)  # Raises with helpful message
+
+    Server-Provided Example (for large model instances):
+        >>> # Class with server-provided attributes (e.g., large AI models)
+        >>> class ModelWrapper:
+        ...     _server_provided = frozenset({'_model', '_tokenizer'})
+        >>> # These are skipped during serialization (they're huge)
+        >>> # During deserialization, inject the server's model instances
+        >>> context = SerializationContext(
+        ...     memo=serialized_memo,
+        ...     server_provided={'_model': server_model, '_tokenizer': server_tokenizer}
+        ... )
     """
 
     def __init__(
         self,
         memo: Memo | None = None,
         persistent_objects: dict[str, object] | None = None,
+        lint: 'LintConfig | None' = None,
+        server_provided: dict[str, object] | None = None,
     ):
         """
         Initialize the serialization context.
@@ -276,9 +312,17 @@ class SerializationContext:
             memo: Optional existing memo table (used for deserialization).
             persistent_objects: Optional dict mapping persistent IDs to objects.
                 Used during deserialization to resolve PersistentType references.
+            lint: Optional LintConfig for validation. If provided, checks for
+                forbidden types, nonlocal closures, and dangerous imports/calls.
+                Use pyson.lint.NNSIGHT_CONFIG for nnsight-compatible validation.
+            server_provided: Optional dict mapping attribute names to values.
+                Used during deserialization to inject server-provided attributes
+                (like large AI model instances) that were skipped during serialization.
         """
         self.memo = memo or {}
         self.persistent_objects = persistent_objects or {}
+        self.lint = lint
+        self.server_provided = server_provided or {}
         # Keep references to all serialized objects to prevent id() reuse.
         # Python can reuse memory addresses for garbage-collected objects,
         # which would cause incorrect memoization if a new object gets the
@@ -291,21 +335,33 @@ class SerializationContext:
 
         This method:
         1. Checks if the object is already memoized (returns existing ref)
-        2. Adds a placeholder to detect circular references
-        3. Dispatches to the appropriate serializer based on type
-        4. Stores the serialized result in the memo
+        2. In strict mode, checks for forbidden types
+        3. Adds a placeholder to detect circular references
+        4. Dispatches to the appropriate serializer based on type
+        5. Stores the serialized result in the memo
 
         Args:
             obj: The Python object to serialize.
 
         Returns:
             The reference ID for this object in the memo table.
+
+        Raises:
+            ValueError: In strict mode, if the object is a forbidden type
+                or contains forbidden code patterns.
         """
         referenceID = id(obj)
 
         # Already serialized - return existing reference (handles circular refs)
         if referenceID in self.memo:
             return referenceID
+
+        # If linting is enabled, check for forbidden types early
+        if self.lint is not None:
+            from pyson.lint import check_forbidden_type
+            forbidden_msg = check_forbidden_type(obj, self.lint)
+            if forbidden_msg:
+                raise ValueError(f"Cannot serialize {type(obj).__name__}:\n{forbidden_msg}")
 
         # Keep object alive to prevent id() reuse during serialization
         self._refs.append(obj)

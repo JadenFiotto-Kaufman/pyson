@@ -1,5 +1,5 @@
 """
-Serialized type definitions for the seri library.
+Serialized type definitions for the pyson library.
 
 This module defines the Pydantic models that represent serialized Python objects.
 Each SerializedType subclass handles a specific Python type:
@@ -16,6 +16,16 @@ Each SerializedType subclass handles a specific Python type:
 Each type provides:
 - serialize(): Class method to convert Python object to serialized form
 - deserialize(): Instance method to reconstruct the Python object
+
+Server-Provided Attributes:
+    Classes can define a `_server_provided` attribute (frozenset of strings)
+    to specify attributes that should be skipped during serialization and
+    injected by the deserializer. This is useful for remote execution where
+    certain resources (models, tokenizers) are provided by the server.
+
+    Example:
+        class StandardizedTransformer(LanguageModel):
+            _server_provided = frozenset({'_module', '_tokenizer', '_model'})
 """
 
 from __future__ import annotations
@@ -422,22 +432,56 @@ class DynamicClassType(SerializedType):
 # =============================================================================
 
 
+def _get_server_provided_attrs(cls: type) -> frozenset:
+    """
+    Get server-provided attribute names from a class hierarchy.
+
+    Walks the MRO to collect all _server_provided attributes.
+
+    Args:
+        cls: The class to check.
+
+    Returns:
+        Frozenset of attribute names that should be skipped during serialization.
+    """
+    result = set()
+    for klass in cls.__mro__:
+        server_provided = getattr(klass, '_server_provided', None)
+        if server_provided:
+            result.update(server_provided)
+    return frozenset(result)
+
+
 class ObjectType(SerializedType):
     """
     Serializer for generic Python objects.
 
     Handles objects by serializing their class and state (__dict__ or
     __getstate__). Used as the fallback for objects not matching other types.
+
+    Server-Provided Attributes:
+        If the object's class defines `_server_provided` as a frozenset of
+        attribute names, those attributes will be skipped during serialization.
+        They should be injected during deserialization via `server_provided`
+        parameter to the deserialize function.
+
+        Example:
+            class MyModel(BaseModel):
+                _server_provided = frozenset({'_internal_cache', '_connection'})
     """
 
     type: Literal["object"] = "object"
     cls: ReferenceId
     state: dict[str, ReferenceId]
+    server_provided_attrs: list[str] | None = None  # Track which attrs were skipped
 
     @classmethod
     def serialize(cls, obj: object, context: SerializationContext):
         # Serialize the object's class
         obj_cls = context.serialize(obj.__class__)
+
+        # Get server-provided attribute names from class hierarchy
+        server_provided = _get_server_provided_attrs(type(obj))
 
         # Get state using __getstate__ or __dict__
         if hasattr(obj, "__getstate__"):
@@ -454,12 +498,23 @@ class ObjectType(SerializedType):
         elif not isinstance(state_dict, dict):
             state_dict = {"__state__": state_dict}
 
+        # Filter out server-provided attributes
+        if server_provided and isinstance(state_dict, dict):
+            skipped = [k for k in state_dict if k in server_provided]
+            state_dict = {k: v for k, v in state_dict.items() if k not in server_provided}
+        else:
+            skipped = []
+
         # Recursively serialize all values in state_dict
         serialized_state = {
             key: context.serialize(value) for key, value in state_dict.items()
         }
 
-        return cls(cls=obj_cls, state=serialized_state)
+        return cls(
+            cls=obj_cls,
+            state=serialized_state,
+            server_provided_attrs=skipped if skipped else None,
+        )
 
     def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
         # Deserialize the class
@@ -473,6 +528,12 @@ class ObjectType(SerializedType):
 
         # Deserialize state
         state = {key: context.deserialize(value) for key, value in self.state.items()}
+
+        # Inject server-provided attributes if available
+        if self.server_provided_attrs and hasattr(context, 'server_provided'):
+            for attr_name in self.server_provided_attrs:
+                if attr_name in context.server_provided:
+                    state[attr_name] = context.server_provided[attr_name]
 
         # Apply state using __setstate__ or __dict__
         if hasattr(obj, "__setstate__"):
@@ -580,6 +641,23 @@ class FunctionType(SerializedType):
 
         # Get source code
         source = inspect.getsource(func)
+
+        # Check for nonlocal closures if linting is enabled
+        if context.lint is not None and context.lint.reject_nonlocal:
+            from pyson.lint import check_nonlocal
+            nonlocal_names = check_nonlocal(func)
+            if nonlocal_names:
+                names_str = ', '.join(sorted(nonlocal_names))
+                raise ValueError(
+                    f"Function '{func.__name__}' uses 'nonlocal {names_str}'.\n"
+                    f"Functions with nonlocal cannot be serialized because multiple closures\n"
+                    f"sharing the same cell would lose shared state.\n"
+                    f"\n"
+                    f"Refactor to use a class:\n"
+                    f"    class Counter:\n"
+                    f"        def __init__(self): self.count = 0\n"
+                    f"        def increment(self): self.count += 1; return self.count"
+                )
 
         # Use cloudpickle's helper to get function state
         state, slotstate = _function_getstate(func)
