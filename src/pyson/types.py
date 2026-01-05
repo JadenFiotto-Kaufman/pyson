@@ -198,6 +198,38 @@ class DictType(SerializedType):
 
 
 # =============================================================================
+# Helper: By-Value Check
+# =============================================================================
+
+from cloudpickle.cloudpickle import _PICKLE_BY_VALUE_MODULES
+
+
+def _should_serialize_by_value(module: str | None) -> bool:
+    """
+    Check if an object from this module should be serialized by value.
+
+    Objects are serialized by value (with full source/state) when:
+    - module is None (dynamically created)
+    - module is "__main__" (interactive/script context)
+    - module is registered via cloudpickle.register_pickle_by_value()
+    - any parent package of module is registered
+    """
+    if module is None:
+        return True
+    if module == "__main__":
+        return True
+    if module in _PICKLE_BY_VALUE_MODULES:
+        return True
+    # Check parent packages (e.g., "mypackage" for "mypackage.submodule")
+    parts = module.split(".")
+    for i in range(1, len(parts)):
+        parent = ".".join(parts[:i])
+        if parent in _PICKLE_BY_VALUE_MODULES:
+            return True
+    return False
+
+
+# =============================================================================
 # Module Type
 # =============================================================================
 
@@ -246,7 +278,7 @@ class DynamicModuleType(SerializedType):
             try:
                 value = getattr(obj, key)
                 # Skip built-in functions (not serializable)
-                if isinstance(value, types.BuiltinDynamicFunctionType):
+                if isinstance(value, types.BuiltinFunctionType):
                     continue
                 attrs[key] = context.serialize(value)
             except Exception:
@@ -272,6 +304,27 @@ class DynamicModuleType(SerializedType):
             setattr(mod, key, value)
 
         return mod
+
+
+class ModuleType(SerializedType):
+    """
+    Dispatcher for module objects.
+
+    Decides whether to serialize by value (DynamicModuleType) or
+    by reference (ModuleRefType) based on module registration.
+    """
+
+    type: Literal["module_dispatch"] = "module_dispatch"
+
+    @classmethod
+    def serialize(cls, obj: types.ModuleType, context: SerializationContext):
+        if _should_serialize_by_value(obj.__name__):
+            return DynamicModuleType.serialize(obj, context)
+        else:
+            return ModuleRefType.serialize(obj, context)
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        raise NotImplementedError("ModuleType is a dispatcher, not a concrete type")
 
 
 # =============================================================================
@@ -415,6 +468,31 @@ class DynamicClassType(SerializedType):
         new_class.__doc__ = self.doc
 
         return new_class
+
+
+class ClassType(SerializedType):
+    """
+    Dispatcher for class objects.
+
+    Decides whether to serialize by value (DynamicClassType) or
+    by reference (ClassRefType) based on module registration.
+    Built-in types are always serialized by reference.
+    """
+
+    type: Literal["class_dispatch"] = "class_dispatch"
+
+    @classmethod
+    def serialize(cls, obj: type, context: SerializationContext):
+        # Built-in types are never serialized by value
+        if obj.__module__ == "builtins":
+            return ClassRefType.serialize(obj, context)
+        if _should_serialize_by_value(getattr(obj, "__module__", None)):
+            return DynamicClassType.serialize(obj, context)
+        else:
+            return ClassRefType.serialize(obj, context)
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        raise NotImplementedError("ClassType is a dispatcher, not a concrete type")
 
 
 # =============================================================================
@@ -737,6 +815,43 @@ class DynamicFunctionType(SerializedType):
         # Memoize the final result
         context.memo[referenceID] = result
         return result
+
+
+class FunctionType(SerializedType):
+    """
+    Dispatcher for function objects (including classmethod/staticmethod).
+
+    Decides whether to serialize by value (DynamicFunctionType) or
+    by reference (FunctionRefType) based on module registration.
+    Built-in functions are always serialized by reference.
+    """
+
+    type: Literal["function_dispatch"] = "function_dispatch"
+
+    @classmethod
+    def serialize(
+        cls,
+        obj: types.FunctionType | classmethod | staticmethod | types.BuiltinFunctionType,
+        context: SerializationContext,
+    ):
+        # Built-in (C) functions are always by reference
+        if isinstance(obj, types.BuiltinFunctionType):
+            return FunctionRefType.serialize(obj, context)
+
+        # Extract the underlying function for classmethod/staticmethod
+        if isinstance(obj, (classmethod, staticmethod)):
+            func = obj.__func__
+        else:
+            func = obj
+
+        # Check if should serialize by value
+        if _should_serialize_by_value(getattr(func, "__module__", None)):
+            return DynamicFunctionType.serialize(obj, context)
+        else:
+            return FunctionRefType.serialize(obj, context)
+
+    def deserialize(self, referenceID: ReferenceId, context: SerializationContext):
+        raise NotImplementedError("FunctionType is a dispatcher, not a concrete type")
 
 
 # =============================================================================

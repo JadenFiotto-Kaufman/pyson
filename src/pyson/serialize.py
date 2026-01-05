@@ -19,13 +19,10 @@ from cloudpickle.cloudpickle import _PICKLE_BY_VALUE_MODULES
 from typing import Callable
 
 from pyson.types import (
-    ClassRefType,
-    DynamicClassType,
-    DynamicModuleType,
-    FunctionRefType,
-    DynamicFunctionType,
+    ClassType,
+    FunctionType,
     Memo,
-    ModuleRefType,
+    ModuleType,
     ObjectType,
     PersistentType,
     Placeholder,
@@ -111,6 +108,13 @@ register_serializer(tuple, TupleType)
 register_serializer(dict, DictType)
 register_serializer(property, PropertyType)
 register_serializer(types.MethodType, MethodType)
+# Dispatcher types that handle by-value vs by-ref decisions
+register_serializer(types.FunctionType, FunctionType)
+register_serializer(types.BuiltinFunctionType, FunctionType)
+register_serializer(classmethod, FunctionType)
+register_serializer(staticmethod, FunctionType)
+register_serializer(type, ClassType)
+register_serializer(types.ModuleType, ModuleType)
 
 
 # =============================================================================
@@ -158,85 +162,6 @@ def register_persistent(
         >>> result = deserialize(payload, persistent_objects={"/models/gpt.pt": model})
     """
     persistent_table[python_type] = dump
-
-
-# =============================================================================
-# By-Value Serialization Helpers
-# =============================================================================
-
-
-def _should_serialize_by_value(module: str | None) -> bool:
-    """
-    Check if an object from this module should be serialized by value.
-
-    Objects are serialized by value (with full source/state) when:
-    - module is None (dynamically created)
-    - module is "__main__" (interactive/script context)
-    - module is registered via cloudpickle.register_pickle_by_value()
-    - any parent package of module is registered
-
-    Args:
-        module: The __module__ attribute of the object, or None.
-
-    Returns:
-        True if the object should be serialized by value.
-    """
-    if module is None:
-        return True
-    if module == "__main__":
-        return True
-    if module in _PICKLE_BY_VALUE_MODULES:
-        return True
-    # Check parent packages (e.g., "mypackage" for "mypackage.submodule")
-    parts = module.split(".")
-    for i in range(1, len(parts)):
-        parent = ".".join(parts[:i])
-        if parent in _PICKLE_BY_VALUE_MODULES:
-            return True
-    return False
-
-
-def _should_serialize_function_by_value(func: types.DynamicFunctionType) -> bool:
-    """
-    Check if a function should be serialized by value (with source code).
-
-    Args:
-        func: The function to check.
-
-    Returns:
-        True if the function should be serialized with its source code.
-    """
-    return _should_serialize_by_value(getattr(func, "__module__", None))
-
-
-def _should_serialize_class_by_value(cls: type) -> bool:
-    """
-    Check if a class should be serialized by value.
-
-    Built-in types (from 'builtins' module) are never serialized by value.
-
-    Args:
-        cls: The class to check.
-
-    Returns:
-        True if the class should be serialized with its full definition.
-    """
-    if cls.__module__ == "builtins":
-        return False
-    return _should_serialize_by_value(getattr(cls, "__module__", None))
-
-
-def _should_serialize_module_by_value(mod: types.ModuleType) -> bool:
-    """
-    Check if a module should be serialized by value.
-
-    Args:
-        mod: The module to check.
-
-    Returns:
-        True if the module should be serialized with its contents.
-    """
-    return _should_serialize_by_value(mod.__name__)
 
 
 # =============================================================================
@@ -330,35 +255,7 @@ class SerializationContext:
 
         # Dispatch to appropriate serializer
         if type(obj) in dispatch_table:
-            # Direct type match in dispatch table
             serialized_type = dispatch_table[type(obj)]
-        elif isinstance(obj, types.FunctionType):
-            # Functions - by value or by reference depending on module
-            if _should_serialize_function_by_value(obj):
-                serialized_type = DynamicFunctionType
-            else:
-                serialized_type = FunctionRefType
-        elif isinstance(obj, types.BuiltinFunctionType):
-            # Built-in (C) functions are always by reference
-            serialized_type = FunctionRefType
-        elif isinstance(obj, (classmethod, staticmethod)):
-            # classmethod/staticmethod - by value or by reference
-            if _should_serialize_function_by_value(obj.__func__):
-                serialized_type = DynamicFunctionType
-            else:
-                serialized_type = FunctionRefType
-        elif isinstance(obj, type):
-            # Class objects - by value or by reference depending on module
-            if _should_serialize_class_by_value(obj):
-                serialized_type = DynamicClassType
-            else:
-                serialized_type = ClassRefType
-        elif isinstance(obj, types.ModuleType):
-            # Module objects - by value or by reference depending on registration
-            if _should_serialize_module_by_value(obj):
-                serialized_type = DynamicModuleType
-            else:
-                serialized_type = ModuleRefType
         else:
             # Default: serialize as a generic object with __dict__
             serialized_type = ObjectType
